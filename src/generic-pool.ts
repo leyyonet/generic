@@ -1,3 +1,4 @@
+import memoize from 'memoizee-decorator';
 import {ArraySome, DeveloperException, FuncLike, leyyo, OneOrMore, printDetailed, RecLike, TypeOpt} from "@leyyo/core";
 import {Bind, fqn, Fqn} from "@leyyo/fqn";
 import {AbstractCallback} from "@leyyo/callback";
@@ -111,7 +112,7 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         throw new DeveloperException('generic.invalid-definition', {clazz: given}).with(this);
         // return null;
     }
-    private _stringify(tree: OneOrMore<GenericTreeLike>): string {
+    protected _stringify(tree: OneOrMore<GenericTreeLike>): string {
         if (Array.isArray(tree)) {
             const list = [];
             tree.forEach(item => {
@@ -124,7 +125,7 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         }
         return tree.base;
     }
-    private _array(tree: OneOrMore<GenericTreeLike>): Array<unknown> {
+    protected _array(tree: OneOrMore<GenericTreeLike>): Array<unknown> {
         if (Array.isArray(tree)) {
             if (tree.length < 1) {
                 return [];
@@ -137,7 +138,7 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         }
         return [tree.base, ...this._array(tree.children)];
     }
-    private _fromObject(obj: RecLike): Array<GenericTreeLike> {
+    protected _fromObject(obj: RecLike): Array<GenericTreeLike> {
         const tree: Array<GenericTreeLike> = [];
         if (!leyyo.is.object(obj, true)) {
             return tree;
@@ -148,7 +149,7 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         });
         return tree;
     }
-    private _toObject(tree: OneOrMore<GenericTreeLike>): RecLike {
+    protected _toObject(tree: OneOrMore<GenericTreeLike>): RecLike {
         if (Array.isArray(tree)) {
             if (tree.length < 1) {
                 return null;
@@ -161,7 +162,7 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         }
         return {[tree.base]: this._toObject(tree.children)};
     }
-    private _parse(values: string | ArraySome): OneOrMore<GenericTreeLike> {
+    protected _parse(values: string | ArraySome): OneOrMore<GenericTreeLike> {
         if (typeof values === 'string') {
             return this.buildTree(values);
         }
@@ -183,12 +184,38 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         });
         return arr;
     }
+    protected _copy(source: unknown, target: FuncLike): boolean {
+        if (source) {
+            if (GenericPool._MAIN_FUNCTIONS.every(fn => (typeof source[fn] === 'function'))) {
+                GenericPool._MAIN_FUNCTIONS.forEach(fn => {
+                    target[fn] = (...a: ArraySome) => source[fn](...a);
+                });
+                return true;
+            }
+        }
+        return false;
+    }
+    protected _toStaging(dto: CastTransfer<GenericInput>): void {
+        const tree = this.toTree(dto.clazz);
+        printDetailed('_toStaging', tree, dto.clazz);
+        if (!this._staging.has(tree.base)) {
+            this._staging.set(tree.base, []);
+        }
+        this._staging.get(tree.base).push({...dto, tree});
+        // this.LOG.warn('_toStaging', {clazz: fqn.name(dto.target), property: dto.property});
+        castPool.ly_defaultSetter(dto);
+    }
+    protected _refactorProperty(dto: GenericTransfer<GenericInput>, like: GenericLike): void {
+        castPool.ly_refactorProperty(dto.target, dto.property, dto.opt, (v, opt) => like.gen(dto.clazz, v, opt));
+    }
     // endregion private
 
     // region custom
     get staging(): Map<string, Array<GenericTransfer<GenericInput>>> {
         return this._staging;
     }
+
+    @memoize({})
     run<T>(clazz: GenericInput, value: unknown, opt?: TypeOpt): T {
         const tree = this.toTree(clazz);
         if (!tree.base) {
@@ -212,17 +239,6 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
         }
         return rec.gen(tree, value, opt) as T;
     }
-    protected _copy(source: unknown, target: FuncLike): boolean {
-        if (source) {
-            if (GenericPool._MAIN_FUNCTIONS.every(fn => (typeof source[fn] === 'function'))) {
-                GenericPool._MAIN_FUNCTIONS.forEach(fn => {
-                    target[fn] = (...a: ArraySome) => source[fn](...a);
-                });
-                return true;
-            }
-        }
-        return false;
-    }
     copy(source: GenericLike|FuncLike, target: FuncLike): void {
         if (!leyyo.is.func(source) && !leyyo.is.object(source)) {
             throw new DeveloperException('generic.invalid-source', {source});
@@ -241,6 +257,8 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
     toTree(given: GenericInput): GenericTreeLike {
         return this._toTree(given, false);
     }
+
+    @memoize({})
     parse(given: unknown): GenericTreeLike {
         const text = leyyo.primitive.text(given);
         if (!text) {
@@ -317,19 +335,6 @@ export class GenericPool extends AbstractCallback<GenericLike> implements Generi
     }
     toObject(tree: GenericTreeLike): RecLike {
         return this._toObject(tree);
-    }
-    protected _toStaging(dto: CastTransfer<GenericInput>): void {
-        const tree = this.toTree(dto.clazz);
-        printDetailed('_toStaging', tree, dto.clazz);
-        if (!this._staging.has(tree.base)) {
-            this._staging.set(tree.base, []);
-        }
-        this._staging.get(tree.base).push({...dto, tree});
-        // this.LOG.warn('_toStaging', {clazz: fqn.name(dto.target), property: dto.property});
-        castPool.ly_defaultSetter(dto);
-    }
-    protected _refactorProperty(dto: GenericTransfer<GenericInput>, like: GenericLike): void {
-        castPool.ly_refactorProperty(dto.target, dto.property, dto.opt, (v, opt) => like.gen(dto.clazz, v, opt));
     }
     // endregion custom
 }

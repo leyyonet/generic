@@ -1,6 +1,6 @@
 {
   "name": "@leyyo/generics",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Generic implementation for Javascript/Typescript",
   "keywords": [
     "generic",
@@ -57,6 +57,7 @@
     "@leyyo/cast": "^1.1.1",
     "@leyyo/core": "^1.1.2",
     "@leyyo/fqn": "^1.1.1",
-    "@leyyo/reflection": "^1.1.1"
+    "@leyyo/reflection": "^1.1.1",
+    "memoizee-decorator": "^1.0.3"
   }
 }
